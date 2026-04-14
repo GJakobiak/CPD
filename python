@@ -1,0 +1,69 @@
+import pandas as pd
+import plotly.express as px
+import plotly.io as pio
+from fpdf import FPDF
+import datetime
+
+# 1. Préparation des données
+df = pd.read_csv('Certifications.csv')
+df['Started On'] = pd.to_datetime(df['Started On'], errors='coerce')
+df['Year'] = df['Started On'].dt.year
+
+# Estimation automatique des heures CPD par autorité
+def calc_hours(auth):
+    auth = str(auth).lower()
+    if 'google' in auth or 'hubspot' in auth: return 4
+    if 'contentsquare' in auth or 'pmi' in auth: return 8
+    if 'linkedin' in auth: return 2
+    if 'sololearn' in auth or 'codecademy' in auth: return 1
+    return 3
+
+df['Hours'] = df['Authority'].apply(calc_hours)
+total_hours = df['Hours'].sum()
+total_certs = len(df)
+
+# 2. Création des graphiques (Images pour le PDF)
+# Graphique 1 : Top 10 Autorités
+fig1 = px.bar(df['Authority'].value_counts().head(10), 
+             orientation='h', title="Top 10 Organismes",
+             template="plotly_white", color_discrete_sequence=['#2c3e50'])
+fig1.write_image("top_auth.png")
+
+# Graphique 2 : Évolution temporelle
+fig2 = px.area(df.groupby('Year')['Hours'].sum().reset_index(), 
+              x='Year', y='Hours', title="Progression des Heures CPD",
+              template="plotly_white", color_discrete_sequence=['#3498db'])
+fig2.write_image("timeline.png")
+
+# 3. Génération du PDF
+class PDF(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 15)
+        self.cell(0, 10, 'RAPPORT PROFESSIONNEL CPD - GUILLAUME JAKOBIAK', 0, 1, 'C')
+        self.ln(5)
+
+pdf = PDF()
+pdf.add_page()
+
+# Section Résumé
+pdf.set_font('Arial', '', 12)
+pdf.set_fill_color(240, 240, 240)
+pdf.cell(0, 10, f"Total de certifications : {total_certs}", 0, 1, 'L', fill=True)
+pdf.cell(0, 10, f"Total heures CPD estimees : {total_hours} heures", 0, 1, 'L', fill=True)
+pdf.ln(10)
+
+# Insertion des graphiques
+pdf.image('top_auth.png', x=10, y=50, w=180)
+pdf.image('timeline.png', x=10, y=140, w=180)
+
+# Liste des compétences clés (extraites des titres)
+pdf.add_page()
+pdf.set_font('Arial', 'B', 14)
+pdf.cell(0, 10, "Apercu des competences certifiees", 0, 1)
+pdf.set_font('Arial', '', 10)
+top_names = df['Name'].head(20).tolist()
+for name in top_names:
+    pdf.cell(0, 8, f"- {name}", 0, 1)
+
+pdf.output('Rapport_CPD_Design.pdf')
+print("Le rapport PDF 'Rapport_CPD_Design.pdf' a été généré avec succès.")
